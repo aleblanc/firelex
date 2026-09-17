@@ -16,10 +16,13 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Checkout (shallow)
+      # Historique complet (pour que `mach artifact` trouve une révision
+      # buildée sur Taskcluster) MAIS sans les blobs -> clone léger.
+      - name: Checkout (full history, no blobs)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          filter: 'blob:none'
 
       - run: df -h
 
@@ -41,6 +44,14 @@ jobs:
         run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android'
 
       - run: df -h
+
+      # Configure d'abord, puis on FORCE le download de l'artifact Gecko.
+      # Si ça échoue ici, c'est net et rapide (pas 29 min de compilation).
+      - name: mach configure
+        run: python3 ./mach configure
+
+      - name: Download prebuilt GeckoView (fail fast)
+        run: python3 ./mach artifact install
 
       - name: mach build (artifact)
         run: python3 ./mach build
