@@ -31,7 +31,7 @@ jobs:
           cat > mozconfig <<'EOF'
           ac_add_options --enable-project=mobile/android
           ac_add_options --enable-artifact-builds
-          ac_add_options --target=arm-linux-androideabi
+          ac_add_options --target=aarch64
           mk_add_options MOZ_OBJDIR=./objdir
           EOF
           cat mozconfig
@@ -40,8 +40,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: mach bootstrap
-        run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android'
+      # ⚠️ "Artifact Mode" = télécharge Gecko précompilé (PAS de compilation C++).
+      # Sans "Artifact Mode", il compile tout le moteur -> impossible sur runner gratuit.
+      - name: mach bootstrap (ARTIFACT MODE)
+        run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android Artifact Mode'
 
       - run: df -h
 
