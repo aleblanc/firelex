@@ -1,58 +1,57 @@
- name: build-fenix
-  on:
-    workflow_dispatch:
+name: build-fenix
+on: [workflow_dispatch]
 
-  jobs:
-    apk:
-      runs-on: ubuntu-latest
-      timeout-minutes: 120
-      steps:
-        - name: Free disk space
-          uses: jlumbroso/free-disk-space@main
-          with:
-            tool-cache: true
-            android: false
-            dotnet: true
-            haskell: true
-            large-packages: true
-            swap-storage: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
 
-        - name: Checkout (shallow)
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 1
+      - name: Checkout (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-        - run: df -h
+      - run: df -h
 
-        - name: Write mozconfig
-          run: |
-            cat > mozconfig <<'EOF'
-            ac_add_options --enable-project=mobile/android
-            ac_add_options --enable-artifact-builds
-            ac_add_options --target=arm-linux-androideabi
-            mk_add_options MOZ_OBJDIR=./objdir
-            EOF
-            cat mozconfig
+      - name: Write mozconfig
+        run: |
+          cat > mozconfig <<'EOF'
+          ac_add_options --enable-project=mobile/android
+          ac_add_options --enable-artifact-builds
+          ac_add_options --target=arm-linux-androideabi
+          mk_add_options MOZ_OBJDIR=./objdir
+          EOF
+          cat mozconfig
 
-        - uses: actions/setup-python@v5
-          with:
-            python-version: '3.11'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-        - name: mach bootstrap
-          run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android'
+      - name: mach bootstrap
+        run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android'
 
-        - run: df -h
+      - run: df -h
 
-        - name: mach build (artifact)
-          run: python3 ./mach build
+      - name: mach build (artifact)
+        run: python3 ./mach build
 
-        - name: Assemble Fenix debug APK
-          run: python3 ./mach gradle fenix:assembleDebug
+      - name: Assemble Fenix debug APK
+        run: python3 ./mach gradle fenix:assembleDebug
 
-        - name: Upload APK
-          if: always()
-          uses: actions/upload-artifact@v4
-          with:
-            name: fenix-debug-apk
-            path: objdir/gradle/build/mobile/android/fenix/app/outputs/apk/**/*.apk
-            if-no-files-found: warn
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fenix-debug-apk
+          path: objdir/gradle/build/mobile/android/fenix/app/outputs/apk/**/*.apk
+          if-no-files-found: warn
