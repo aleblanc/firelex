@@ -20,8 +20,8 @@
  */
 
 /**
- * pdfjsVersion = 6.4.160
- * pdfjsBuild = ee470d5db
+ * pdfjsVersion = 6.4.191
+ * pdfjsBuild = ccd820e12
  */
 
 ;// ./web/ui_utils.js
@@ -146,10 +146,7 @@ function removeNullCharacters(str, replaceInvisible = false) {
   if (!InvisibleCharsRegExp.test(str)) {
     return str;
   }
-  if (replaceInvisible) {
-    return str.replaceAll(InvisibleCharsRegExp, m => m === "\x00" ? "" : " ");
-  }
-  return str.replaceAll("\x00", "");
+  return replaceInvisible ? str.replaceAll(InvisibleCharsRegExp, m => m === "\x00" ? "" : " ") : str.replaceAll("\x00", "");
 }
 function binarySearchFirstItem(items, condition, start = 0) {
   let minIndex = start;
@@ -895,7 +892,7 @@ const {
 } = globalThis.pdfjsLib;
 
 ;// ./web/internal_evt.js
-const INTERNAL_EVT = "5960813a-aafe-44ce-a1a2-18a81975929e";
+const INTERNAL_EVT = "4eba7ddc-e476-46d8-af27-d30960a4af59";
 const internalOpt = Object.freeze({
   internal: INTERNAL_EVT
 });
@@ -2105,13 +2102,10 @@ function mapVerificationStatus(signatureCode, certificateCode) {
       errorCode: certificateCode
     };
   }
-  if (NSS_ERR_CODES.UNTRUSTED.has(certificateCode)) {
-    return {
-      status: "untrusted",
-      errorCode: certificateCode
-    };
-  }
-  return {
+  return NSS_ERR_CODES.UNTRUSTED.has(certificateCode) ? {
+    status: "untrusted",
+    errorCode: certificateCode
+  } : {
     status: "untrusted",
     errorCode: certificateCode
   };
@@ -2268,7 +2262,11 @@ class ExternalServices extends BaseExternalServices {
     FirefoxCom.request("updateEditorStates", data);
   }
   async createL10n() {
-    await document.l10n.ready;
+    try {
+      await document.l10n.ready;
+    } catch (ex) {
+      console.error(`createL10n: "${ex}".`);
+    }
     return new L10n(AppOptions.get("localeProperties"), document.l10n);
   }
   createScripting() {
@@ -3075,10 +3073,7 @@ class CommentSidebar extends Sidebar {
     if (a.rect[1] !== b.rect[1]) {
       return b.rect[1] - a.rect[1];
     }
-    if (a.rect[2] !== b.rect[2]) {
-      return a.rect[2] - b.rect[2];
-    }
-    return a.id.localeCompare(b.id);
+    return a.rect[2] !== b.rect[2] ? a.rect[2] - b.rect[2] : a.id.localeCompare(b.id);
   }
 }
 class CommentDialog {
@@ -4268,10 +4263,7 @@ class PDFFindController {
       if (query.startsWith(original)) {
         return `${fixed}[ ]*`;
       }
-      if (query.endsWith(original)) {
-        return `[ ]*${fixed}`;
-      }
-      return `[ ]*${fixed}[ ]*`;
+      return query.endsWith(original) ? `[ ]*${fixed}` : `[ ]*${fixed}[ ]*`;
     };
     query = query.replaceAll(SPECIAL_CHARS_REG_EXP, (match, p1, p2, p3, p4, p5) => {
       if (p1) {
@@ -7615,10 +7607,7 @@ class TextHighlighter {
         span.className = `${className} appended`;
         span.append(node);
         div.append(span);
-        if (className.includes("selected")) {
-          return span;
-        }
-        return null;
+        return className.includes("selected") ? span : null;
       }
       div.append(node);
       return 0;
@@ -8830,7 +8819,7 @@ class PDFViewer {
   #savedPageViews = null;
   #deletedPageNumbers = null;
   constructor(options) {
-    const viewerVersion = "6.4.160";
+    const viewerVersion = "6.4.191";
     if (version !== viewerVersion) {
       throw new Error(`The API version "${version}" does not match the Viewer version "${viewerVersion}".`);
     }
@@ -9829,10 +9818,7 @@ class PDFViewer {
       return null;
     }
     const i = this._pageLabels.indexOf(label);
-    if (i < 0) {
-      return null;
-    }
-    return i + 1;
+    return i < 0 ? null : i + 1;
   }
   scrollPageIntoView({
     pageNumber,
@@ -10045,10 +10031,10 @@ class PDFViewer {
     return this.presentationModeState === PresentationModeState.CHANGING;
   }
   get isHorizontalScrollbarEnabled() {
-    return this.isInPresentationMode ? false : this.container.scrollWidth > this.container.clientWidth;
+    return !this.isInPresentationMode && this.container.scrollWidth > this.container.clientWidth;
   }
   get isVerticalScrollbarEnabled() {
-    return this.isInPresentationMode ? false : this.container.scrollHeight > this.container.clientHeight;
+    return !this.isInPresentationMode && this.container.scrollHeight > this.container.clientHeight;
   }
   _getVisiblePages() {
     const views = this._scrollMode === ScrollMode.PAGE ? this.#scrollModePageState.pages : this._pages,
