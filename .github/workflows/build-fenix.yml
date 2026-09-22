@@ -16,19 +16,22 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      # ⚠️ On build une branche STABLE, PAS `main` (= Nightly, code en dev -> plante).
-      #   release  = Firefox stable actuel
-      #   esr140   = le plus stable + change le moins (moins de rebases plus tard)
-      # `repository:` pointe l'upstream Mozilla (pas de code custom pour l'instant).
-      # Quand tu auras ta homepage : pousse cette branche dans ton fork et enlève
-      # `repository:` pour builder ton fork.
-      - name: Checkout STABLE branch (release / esr140)
+
+      - name: Checkout upstream STABLE (release)
         uses: actions/checkout@v4
         with:
           repository: mozilla-firefox/firefox
           ref: release
           fetch-depth: 1000
           filter: 'blob:none'
+
+      # Recupere firelex-patch/ (overlay + patches + XPIs) depuis CE repo, dans un
+      # sous-dossier, sans re-cloner tout Firefox (sparse checkout, depth 1).
+      - name: Checkout firelex-patch overlay
+        uses: actions/checkout@v4
+        with:
+          path: _firelex
+          sparse-checkout: firelex-patch
 
       - run: df -h
 
@@ -42,12 +45,16 @@ jobs:
           EOF
           cat mozconfig
 
+      # Applique l'overlay sur l'arbre upstream (= $GITHUB_WORKSPACE). Echoue
+      # bruyamment si un patch ne s'applique pas (signal de rebase).
+      - name: Apply firelex-patch
+        run: _firelex/firelex-patch/apply.sh "$GITHUB_WORKSPACE"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Cache des toolchains/SDK/NDK téléchargés par bootstrap (~5-8 Go).
-      # 1er run : vide, se remplit à la fin. Runs suivants : bootstrap ~instantané.
+
       - name: Cache ~/.mozbuild (toolchains, SDK, NDK)
         uses: actions/cache@v4
         with:
@@ -56,7 +63,6 @@ jobs:
           restore-keys: |
             mozbuild-android-artifact-${{ runner.os }}-
 
-      # Cache des dépendances Gradle.
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -67,6 +73,7 @@ jobs:
           restore-keys: |
             gradle-fenix-${{ runner.os }}-
 
+
       # ⚠️ "Artifact Mode" = télécharge Gecko précompilé (PAS de compilation C++).
       # Sans "Artifact Mode", il compile tout le moteur -> impossible sur runner gratuit.
       - name: mach bootstrap (ARTIFACT MODE)
@@ -75,7 +82,7 @@ jobs:
       - run: df -h
 
       # Configure d'abord, puis on FORCE le download de l'artifact Gecko.
-      # Si ça échoue ici, c'est net et rapide (pas 29 min de compilation).
+      # Si ca echoue ici, c'est net et rapide (pas 29 min de compilation).
       - name: mach configure
         run: python3 ./mach configure
 
