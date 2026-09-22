@@ -1849,6 +1849,22 @@
     <dialog
       android:id="@+id/menuFragment"
       android:name="org.mozilla.fenix.components.menu.MenuFragment">
+
+      <action
+        android:id="@+id/action_menuFragment_to_translationsDialogFragment"
+        app:destination="@id/translationsDialogFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_summarizationFragment"
+        app:destination="@id/summarizationFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_webCompatReporterFragment"
+        app:destination="@id/webCompatReporterFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_createShortcutFragment"
+        app:destination="@id/createShortcutFragment" />
     </dialog>
   </navigation>
 

@@ -625,7 +625,15 @@ class TreeMetadataEmitter(LoggingMixin):
                 )
 
     def _rust_library(
-        self, context, libname, static_args, is_gkrust=False, cls=RustLibrary
+        self,
+        context,
+        libname,
+        static_args,
+        is_gkrust=False,
+        cargo_profile_suffix="",
+        cargo_crate_type="",
+        no_lto=False,
+        cls=RustLibrary,
     ):
         # We need to note any Rust library for linking purposes.
         config, cargo_file = self._parse_and_check_cargo_file(context)
@@ -657,6 +665,13 @@ class TreeMetadataEmitter(LoggingMixin):
                 context,
             )
 
+        if cargo_crate_type and cargo_crate_type != "staticlib":
+            raise SandboxValidationError(
+                f"cargo_crate_type {cargo_crate_type} for {libname} must be "
+                "'staticlib'",
+                context,
+            )
+
         crate_type = "staticlib"
 
         dependencies = set(config.get("dependencies", {}).keys())
@@ -678,6 +693,9 @@ class TreeMetadataEmitter(LoggingMixin):
             dependencies,
             features,
             is_gkrust,
+            cargo_profile_suffix=cargo_profile_suffix,
+            cargo_crate_type=cargo_crate_type,
+            no_lto=no_lto,
             **static_args,
         )
 
@@ -993,6 +1011,13 @@ class TreeMetadataEmitter(LoggingMixin):
                         libname,
                         static_args,
                         is_gkrust=bool(context.get("IS_GKRUST")),
+                        cargo_profile_suffix=context.get(
+                            "RUST_LIBRARY_CARGO_PROFILE_SUFFIX", ""
+                        ),
+                        cargo_crate_type=context.get(
+                            "RUST_LIBRARY_CARGO_CRATE_TYPE", ""
+                        ),
+                        no_lto=bool(context.get("RUST_LIBRARY_NO_LTO")),
                     )
                 else:
                     lib = StaticLibrary(context, libname, **static_args)

@@ -181,6 +181,8 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.browser.permissions.FenixSitePermissionLearnMoreUrlProvider
 import org.mozilla.fenix.browser.readermode.DefaultReaderModeController
 import org.mozilla.fenix.browser.readermode.ReaderModeController
+import org.mozilla.fenix.browser.reloadcover.TabReloadCoverFeature
+import org.mozilla.fenix.browser.reloadcover.TabReloadCoverGating
 import org.mozilla.fenix.browser.store.BrowserScreenMiddleware
 import org.mozilla.fenix.browser.store.BrowserScreenState
 import org.mozilla.fenix.browser.store.BrowserScreenStore
@@ -217,6 +219,7 @@ import org.mozilla.fenix.ext.getBottomToolbarHeight
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.getTopToolbarHeight
 import org.mozilla.fenix.ext.hideToolbar
+import org.mozilla.fenix.ext.isOnline
 import org.mozilla.fenix.ext.isToolbarAtBottom
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.registerForActivityResult
@@ -293,6 +296,8 @@ abstract class BaseBrowserFragment :
 
     protected val readerViewFeature = ViewBoundFeatureWrapper<ReaderViewFeature>()
     protected val thumbnailsFeature = ViewBoundFeatureWrapper<BrowserThumbnails>()
+    private val scrollAwareThumbnailFeature = ViewBoundFeatureWrapper<ScrollAwareThumbnailFeature>()
+    private val tabReloadCoverFeature = ViewBoundFeatureWrapper<TabReloadCoverFeature>()
 
     @VisibleForTesting internal val messagingFeatureMicrosurvey = ViewBoundFeatureWrapper<MessagingFeature>()
 
@@ -1206,6 +1211,42 @@ abstract class BaseBrowserFragment :
             owner = this,
             view = view,
         )
+
+        val isCoverEnabled = TabReloadCoverGating.isCoverEnabled(settings)
+        val isScrollAwareEnabled = TabReloadCoverGating.isScrollAwareEnabled(settings)
+        val isOnline = {
+            context.getSystemService<android.net.ConnectivityManager>()?.isOnline() ?: false
+        }
+
+        if (isCoverEnabled) {
+            tabReloadCoverFeature.set(
+                feature =
+                    TabReloadCoverFeature(
+                        store = requireComponents.core.store,
+                        browserScreenStore = browserScreenStore,
+                        thumbnailStorage = requireComponents.core.thumbnailStorage,
+                        coverView = binding.tabReloadCover,
+                        tabId = customTabSessionId,
+                        isOnline = isOnline,
+                    ),
+                owner = this,
+                view = view,
+            )
+        }
+
+        if (isScrollAwareEnabled) {
+            scrollAwareThumbnailFeature.set(
+                feature =
+                    ScrollAwareThumbnailFeature(
+                        store = requireComponents.core.store,
+                        lifecycleOwner = viewLifecycleOwner,
+                        thumbnailsFeature = { thumbnailsFeature.get() },
+                        isOnline = isOnline,
+                    ),
+                owner = this,
+                view = view,
+            )
+        }
 
         lastTabFeature.set(
             feature =

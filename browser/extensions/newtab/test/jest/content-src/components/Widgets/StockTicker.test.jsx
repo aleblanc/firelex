@@ -186,6 +186,9 @@ describe("StockTicker", () => {
     expect(
       container.querySelector("li.stock-ticker").getAttribute("aria-hidden")
     ).toBe("true");
+    expect(container.querySelector("li.stock-ticker").className).toContain(
+      "stock-ticker--loading"
+    );
   });
 
   it("falls back to the ticker symbol as the screen-reader subject when name is missing, and is not aria-hidden", () => {
@@ -242,6 +245,58 @@ describe("StockTicker", () => {
       change: "+2.1%",
       price: "$559.44",
     });
+  });
+
+  it.each(["medium", "large"])(
+    "gives a %s quote row a tooltip with the full name",
+    size => {
+      const { container } = render(
+        <StockTicker
+          size={size}
+          name="SPDR Dow Jones Industrial Average ETF Trust"
+          ticker="DIA"
+          price="$559.44 USD"
+          changePercent="-0.11"
+        />
+      );
+      const name = "SPDR Dow Jones Industrial Average ETF Trust";
+      expect(
+        container.querySelector(".stock-indicator").getAttribute("title")
+      ).toBe(name);
+      expect(
+        container.querySelector(".stock-ticker-label").getAttribute("title")
+      ).toBe(name);
+      // The li is what screen readers read; a title there would be announced
+      // as a description after the spoken summary.
+      expect(container.querySelector("li").hasAttribute("title")).toBe(false);
+    }
+  );
+
+  it("gives small, loading and search rows no tooltip", () => {
+    const hasTooltip = container =>
+      !![...container.querySelectorAll("[title]")].length;
+    const small = render(
+      <StockTicker
+        size="small"
+        name="Apple Inc"
+        ticker="AAPL"
+        price="$1 USD"
+        changePercent="+0.1"
+      />
+    );
+    expect(hasTooltip(small.container)).toBe(false);
+    const loading = render(<StockTicker size="large" loading={true} />);
+    expect(hasTooltip(loading.container)).toBe(false);
+    const result = render(
+      <StockTicker
+        size="large"
+        variant="search"
+        name="Apple Inc"
+        ticker="AAPL"
+        exchange="NASDAQ"
+      />
+    );
+    expect(hasTooltip(result.container)).toBe(false);
   });
 });
 

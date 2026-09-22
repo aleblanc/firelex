@@ -397,6 +397,10 @@ pref("browser.overlink-delay", 80);
   pref("browser.taskbarTabs.enabled", false);
 #endif
 
+// How the shell service should create desktop entries on Unix-likes.
+// See ShellService.sys.mjs for the valid APIs.
+pref("browser.shell.desktop-entry-api", "default");
+
 // Whether using `ctrl` or `command` when hitting return/enter
 // in the URL bar should add prefix 'www.' and suffix
 // Services.locale.urlFixupSuffix to the URL bar value prior to navigating.
@@ -2016,6 +2020,8 @@ pref("browser.newtabpage.activity-stream.discoverystream.promoCard.visible", tru
 pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", true);
 pref("browser.newtabpage.activity-stream.newtabWallpapers.customColor.enabled", true);
 pref("browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.enabled", true);
+// Keeps more than one custom wallpaper, shown as "Your images" in the picker
+pref("browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.library.enabled", true);
 
 // Utility preferences for custom wallpaper upload
 pref("browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.uuid", "");
@@ -3129,6 +3135,11 @@ pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.vpnEnabled", true);
 // for users who don't have sync enabled
 pref("identity.fxaccounts.toolbar.syncSetup.panelAccessed", false);
 
+// Whether the user dismissed the app menu's sign-in promo. Once dismissed, the
+// promo is never shown again and the compact sign-in row takes its place. Only
+// the app menu's promo is dismissible; the account menu's is not (bug 2070687).
+pref("identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed", false);
+
 // Toolbox preferences
 pref("devtools.toolbox.footer.height", 250);
 pref("devtools.toolbox.sidebar.width", 500);
@@ -3551,7 +3562,10 @@ pref("first-startup.category-tasks-enabled", true);
   pref("app.backgroundNotifications.receivePushMessages.perMessageTimeoutMs", 5000);
   pref("app.backgroundNotifications.receivePushMessages.totalTimeoutMs", 60000);
 
-  // Whether the push notification helper process should run.
+  // The helper runs only while both of these are true; available is Nimbus's
+  // and enabled is the user's. See pushNotificationHelper in
+  // FeatureManifest.yaml.
+  pref("app.backgroundNotifications.helper.available", false);
   pref("app.backgroundNotifications.helper.enabled", false);
   pref("app.backgroundNotifications.helper.loglevel", "Error");
 #endif

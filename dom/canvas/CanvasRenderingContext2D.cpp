@@ -4487,6 +4487,18 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
     fontFaceSetImpl->FlushUserFontSet();
   }
 
+  auto& state = CurrentState();
+
+  // The fontGroup may be stale, which we can check by comparing the
+  // visibility provider set on its creation against the current
+  // visibility provider. Use this opportunity to destroy the old
+  // fontGroup so we can create a new one later and store it in the
+  // cache.
+  if (state.fontGroup &&
+      state.fontGroup->GetFontVisibilityProvider() != mOffscreenCanvas) {
+    state.fontGroup = nullptr;
+  }
+
   // Try to short-circuit the case where the exact same font is being re-
   // specified, and no other relevant properties have changed.
   if (FontIsUnchanged(aFont, fontFaceSetImpl)) {
@@ -4498,7 +4510,6 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
     mFontGroupCache = MakeUnique<FontGroupCache>();
   }
 
-  auto& state = CurrentState();
   FontGroupCacheKey key(
       aFont, state.resolvedFontLang, state.fontWidth, state.fontVariantCaps,
       state.fontKerning,
@@ -5559,8 +5570,26 @@ gfxFontGroup* CanvasRenderingContext2D::GetCurrentFontStyle() {
   if (currentFont.IsEmpty()) {
     currentFont = kDefaultFontStyle;
   }
-  if (!SetFontInternal(currentFont, err) || err.Failed()) {
-    err.SuppressException();
+
+  bool fontWasSet = SetFontInternal(currentFont, err) && !err.Failed();
+  err.SuppressException();
+  // SetFontInternal may flush and run script, which could change or
+  // destroy the current PresShell.
+  if (GetPresShell() != presShell || (presShell && presShell->IsDestroying())) {
+    // We can't rely on the cached fontGroup (which uses the old PresShell).
+    // Mark fontWasSet false so we create the fontGroup, and clear out the
+    // possibly stale pointers we use to create a new fontGroup.
+    fontWasSet = false;
+    presShell = GetPresShell();
+    presContext = presShell ? presShell->GetPresContext() : nullptr;
+    if (presContext) {
+      visProvider = presContext;
+    } else {
+      visProvider = mOffscreenCanvas;
+    }
+  }
+
+  if (!fontWasSet) {
     // XXX Should we get a default lang from the prescontext or something?
     nsAtom* language = nsGkAtoms::x_western;
     bool explicitLanguage = false;

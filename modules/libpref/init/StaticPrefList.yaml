@@ -977,7 +977,9 @@
 # Prefs starting with "beacon."
 #---------------------------------------------------------------------------
 
-# Is support for Navigator.sendBeacon enabled?
+# Should navigator.sendBeacon() actually send requests?
+# When false, sendBeacon() is still exposed and still reports success, but
+# no request is sent.
 - name: beacon.enabled
   type: bool
   value: true
@@ -12105,7 +12107,7 @@
 # Whether to disable layer pixel alignment in layout stuff.
 - name: layout.disable-pixel-alignment
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Whether scrollIntoView scrolls to `position: fixed` frames visually.

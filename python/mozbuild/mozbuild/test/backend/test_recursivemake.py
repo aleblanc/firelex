@@ -1123,6 +1123,50 @@ class TestRecursiveMakeBackend(BackendTester):
             "RUST_LIBRARY_FILE := x86_64-unknown-linux-gnu/release/libtest_library.a",
             "CARGO_FILE := $(srcdir)/Cargo.toml",
             "CARGO_TARGET_DIR := %s" % env.topobjdir,
+            "RUST_LIBRARY_LTO := 1",
+        ]
+
+        self.assertEqual(lines, expected)
+
+    def test_rust_library_with_no_lto(self):
+        """Test that a Rust library's LTO opt out keeps RUST_LIBRARY_LTO unset."""
+        env = self._consume("rust-library-no-lto", RecursiveMakeBackend)
+
+        backend_path = mozpath.join(env.topobjdir, "backend.mk")
+        lines = [
+            l.strip()
+            for l in open(backend_path).readlines()[2:]
+            # Strip out computed flags, they're a PITA to test.
+            if not l.startswith("COMPUTED_")
+        ]
+
+        expected = [
+            "RUST_LIBRARY_FILE := x86_64-unknown-linux-gnu/release/libno_lto_library.a",
+            "CARGO_FILE := $(srcdir)/Cargo.toml",
+            "CARGO_TARGET_DIR := %s" % env.topobjdir,
+        ]
+
+        self.assertEqual(lines, expected)
+
+    def test_rust_library_with_cargo_profile(self):
+        """Test that a Rust library's Cargo profile is written to backend.mk."""
+        env = self._consume("rust-library-cargo-profile", RecursiveMakeBackend)
+
+        backend_path = mozpath.join(env.topobjdir, "backend.mk")
+        lines = [
+            l.strip()
+            for l in open(backend_path).readlines()[2:]
+            # Strip out computed flags, they're a PITA to test.
+            if not l.startswith("COMPUTED_")
+        ]
+
+        expected = [
+            "RUST_LIBRARY_FILE := "
+            "x86_64-unknown-linux-gnu/release-custom/libprofile_library.a",
+            "CARGO_FILE := $(srcdir)/Cargo.toml",
+            f"CARGO_TARGET_DIR := {env.topobjdir}",
+            "RUST_LIBRARY_CARGO_PROFILE_SUFFIX := custom",
+            "RUST_LIBRARY_CARGO_CRATE_TYPE := staticlib",
         ]
 
         self.assertEqual(lines, expected)
@@ -1185,6 +1229,7 @@ class TestRecursiveMakeBackend(BackendTester):
             "CARGO_FILE := $(srcdir)/Cargo.toml",
             "CARGO_TARGET_DIR := %s" % env.topobjdir,
             "RUST_LIBRARY_FEATURES := musthave,cantlivewithout",
+            "RUST_LIBRARY_LTO := 1",
         ]
 
         self.assertEqual(lines, expected)
@@ -1263,6 +1308,14 @@ class TestRecursiveMakeBackend(BackendTester):
             any(l == "recurse_compile: code/host code/target" for l in lines)
         )
 
+        root_path = mozpath.join(env.topobjdir, "root.mk")
+        with open(root_path) as fh:
+            syms_line = next(
+                (l for l in fh.read().splitlines() if l.startswith("syms_targets :=")),
+                "",
+            )
+        self.assertIn("code/syms", syms_line)
+
     def test_host_rust_program_output_category(self):
         """Test that a host Rust program with output_category is written correctly."""
         env = self._consume("host-rust-program-output-category", RecursiveMakeBackend)
@@ -1285,6 +1338,30 @@ class TestRecursiveMakeBackend(BackendTester):
         ]
 
         self.assertEqual(lines, expected)
+
+    def test_rust_program_output_category(self):
+        """A Rust program with output_category is excluded from syms_targets."""
+        env = self._consume("rust-program-output-category", RecursiveMakeBackend)
+
+        root_path = mozpath.join(env.topobjdir, "root.mk")
+        with open(root_path) as fh:
+            content = fh.read()
+
+        syms_line = next(
+            (l for l in content.splitlines() if l.startswith("syms_targets :=")),
+            "",
+        )
+
+        self.assertIn("without-output-category/syms", syms_line)
+        self.assertNotIn("with-output-category/syms", syms_line)
+
+        self.assertIn("mixed/syms", syms_line)
+        backend_path = mozpath.join(env.topobjdir, "mixed/backend.mk")
+        with open(backend_path) as fh:
+            lines = [l.strip() for l in fh.readlines()]
+        rust_program = "$(DEPTH)/i686-pc-windows-msvc/release/mixed-rust.exe"
+        self.assertIn(f"RUST_PROGRAMS += {rust_program}", lines)
+        self.assertIn(f"MOZBUILD_NON_DEFAULT_TARGETS += {rust_program}", lines)
 
     def test_final_target(self):
         """Test that FINAL_TARGET is written to backend.mk correctly."""

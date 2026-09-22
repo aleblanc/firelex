@@ -238,7 +238,6 @@ add_task(async function test_ui_state_signedin() {
     ],
     disabledItems: [],
     hiddenItems: [
-      "PanelUI-fxa-menu-setup-sync-container",
       // "Get Firefox for mobile" is only offered while sync is off.
       "PanelUI-fxa-menu-get-firefox-mobile",
     ],
@@ -630,6 +629,108 @@ add_task(async function test_app_menu_signed_out_row() {
   await SpecialPowers.popPrefEnv();
 });
 
+// The app menu's promo offers a "Sign in" link, which leads to the same place
+// the account menu's promo button does, and a dismiss button. Dismissing the
+// promo is permanent: the compact sign-in row is shown in its place from then
+// on, in this window and in any other.
+add_task(async function test_app_menu_sign_in_promo_dismissal() {
+  await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
+  const sandbox = sinon.createSandbox();
+  const signInStub = sandbox.stub(gSync, "openFxAEmailFirstPageFromFxaMenu");
+
+  gSync.updateAllUI({ status: UIState.STATUS_NOT_CONFIGURED });
+
+  const promo = PanelMultiView.getViewNode(
+    document,
+    "appMenu-fxa-sign-in-promo"
+  );
+  const statusRow = PanelMultiView.getViewNode(document, "appMenu-fxa-status2");
+  const dismissButton = PanelMultiView.getViewNode(
+    document,
+    "appMenu-fxa-sign-in-promo-dismiss-button"
+  );
+  const promoLink = PanelMultiView.getViewNode(
+    document,
+    "appMenu-fxa-sign-in-promo-link"
+  );
+
+  await openMainPanel();
+  ok(BrowserTestUtils.isVisible(promo), "The promo is shown by default");
+
+  // The dismiss button's click target is deliberately larger than the button
+  // you can see, so removing either half of that (the outer padding or the
+  // negative margin that offsets it) should fail here.
+  const dismissShadow = dismissButton.shadowRoot;
+  is(
+    dismissShadow.querySelector("button").getBoundingClientRect().width,
+    40,
+    "The dismiss button's click target is 40px wide"
+  );
+  is(
+    dismissShadow.querySelector(".button-background").getBoundingClientRect()
+      .width,
+    24,
+    "The visible dismiss button stays 24px wide"
+  );
+
+  // Compact leaves the target less room, so it narrows rather than reaching
+  // past the promo's inline edge: 6px of slop each side instead of 8px.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.uidensity", 1]] });
+  is(
+    dismissShadow.querySelector("button").getBoundingClientRect().width,
+    36,
+    "The click target narrows to 36px when compact, staying inside the promo"
+  );
+  await SpecialPowers.popPrefEnv();
+
+  let panelHidden = BrowserTestUtils.waitForEvent(PanelUI.panel, "popuphidden");
+  promoLink.click();
+  ok(signInStub.called, "The promo's link leads to the sign-in page");
+  await panelHidden;
+
+  await openMainPanel();
+  dismissButton.click();
+  ok(
+    Services.prefs.getBoolPref(
+      "identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed"
+    ),
+    "Dismissing the promo is recorded in the pref"
+  );
+  ok(BrowserTestUtils.isHidden(promo), "The dismissed promo is hidden");
+  ok(
+    BrowserTestUtils.isVisible(statusRow),
+    "The compact sign-in row is shown in the dismissed promo's place"
+  );
+  ok(
+    BrowserTestUtils.isVisible(PanelUI.panel),
+    "Dismissing the promo leaves the app menu open"
+  );
+  await closeTabAndMainPanel();
+
+  const newWin = await BrowserTestUtils.openNewBrowserWindow();
+  // gSync.init() is called in a requestIdleCallback, and it is what reflects
+  // the dismissal onto the new window's root element.
+  newWin.gSync.init();
+  newWin.gSync.updateAllUI({ status: UIState.STATUS_NOT_CONFIGURED });
+  const newWinMenuButton = newWin.document.getElementById(
+    "PanelUI-menu-button"
+  );
+  newWinMenuButton.click();
+  await BrowserTestUtils.waitForEvent(newWin.PanelUI.mainView, "ViewShown");
+  ok(
+    BrowserTestUtils.isHidden(
+      PanelMultiView.getViewNode(newWin.document, "appMenu-fxa-sign-in-promo")
+    ),
+    "The promo stays dismissed in a new window"
+  );
+  await BrowserTestUtils.closeWindow(newWin);
+
+  sandbox.restore();
+  Services.prefs.clearUserPref(
+    "identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed"
+  );
+});
+
 add_task(async function test_ui_state_signed_in() {
   await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
 
@@ -655,7 +756,7 @@ add_task(async function test_ui_state_signed_in() {
       "PanelUI-fxa-menu-sync-status-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: ["PanelUI-fxa-menu-get-firefox-mobile"],
   });
   checkFxAAvatar("signedin");
@@ -696,7 +797,7 @@ add_task(async function test_ui_state_signed_in_no_display_name() {
       "PanelUI-fxa-menu-sync-status-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: ["PanelUI-fxa-menu-get-firefox-mobile"],
   });
   checkFxAAvatar("signedin");
@@ -740,7 +841,7 @@ add_task(async function test_ui_state_unverified() {
       "PanelUI-fxa-menu-sync-status-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: ["PanelUI-fxa-menu-get-firefox-mobile"],
   });
   checkFxAAvatar("unverified");
@@ -788,7 +889,7 @@ add_task(async function test_ui_state_loginFailed() {
       "PanelUI-fxa-menu-sync-status-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: ["PanelUI-fxa-menu-get-firefox-mobile"],
   });
   checkFxAAvatar("login-failed");
@@ -1419,7 +1520,7 @@ add_task(async function test_experiment_ui_state_signedin() {
       "PanelUI-fxa-menu-vpn-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: [],
   });
   checkFxAAvatar("signedin");
@@ -1469,7 +1570,7 @@ add_task(async function test_new_sync_setup_ui() {
       "PanelUI-fxa-menu-sync-status-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: ["PanelUI-fxa-menu-get-firefox-mobile"],
   });
 
@@ -1541,7 +1642,7 @@ add_task(async function test_ui_privacy_tools_in_use_signedin() {
       "PanelUI-fxa-menu-vpn-button",
     ],
     disabledItems: [],
-    hiddenItems: ["PanelUI-fxa-menu-setup-sync-container"],
+    hiddenItems: [],
     visibleItems: [
       // The in-use tool stays visible under "Privacy tools".
       "PanelUI-fxa-menu-relay-button",

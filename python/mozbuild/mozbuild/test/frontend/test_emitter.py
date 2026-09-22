@@ -1762,6 +1762,14 @@ class TestEmitterBasic(unittest.TestCase):
         ):
             self.read_topsrcdir(reader)
 
+    def test_rust_library_invalid_cargo_crate_type(self):
+        """Test that a RustLibrary is restricted to a static library."""
+        reader = self.reader("rust-library-invalid-cargo-crate-type")
+        with self.assertRaisesRegex(
+            SandboxValidationError, "cargo_crate_type.* must be 'staticlib'"
+        ):
+            self.read_topsrcdir(reader)
+
     def test_rust_library_dash_folding(self):
         """Test that on-disk names of RustLibrary objects convert dashes to underscores."""
         reader = self.reader(
@@ -1808,6 +1816,24 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertIsInstance(host_ldflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
         self.assertEqual(lib.features, ["musthave", "cantlivewithout"])
+        self.assertFalse(lib.no_lto)
+
+    def test_rust_library_no_lto(self):
+        """Test that a RustLibrary LTO opt out is correctly emitted."""
+        reader = self.reader(
+            "rust-library-no-lto",
+            extra_substs=dict(RUST_TARGET="i686-pc-windows-msvc"),
+        )
+        objs = self.read_topsrcdir(reader)
+
+        self.assertEqual(len(objs), 5)
+        ldflags, host_cflags, host_ldflags, lib, cflags = objs
+        self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
+        self.assertIsInstance(host_cflags, ComputedFlags)
+        self.assertIsInstance(host_ldflags, ComputedFlags)
+        self.assertIsInstance(lib, RustLibrary)
+        self.assertTrue(lib.no_lto)
 
     def test_rust_library_duplicate_features(self):
         """Test that duplicate RustLibrary features are rejected."""

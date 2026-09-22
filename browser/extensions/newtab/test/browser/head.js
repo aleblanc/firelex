@@ -31,18 +31,54 @@ async function toggleTopsitesPref() {
   ]);
 }
 
+// The sites setDefaultTopSites configures, in the order they fill the grid.
+const DEFAULT_TOP_SITES = [
+  "https://www.youtube.com/",
+  "https://www.facebook.com/",
+  "https://www.amazon.com/",
+  "https://www.reddit.com/",
+  "https://www.wikipedia.org/",
+  "https://twitter.com/",
+];
+
+// Using a topsite with example.com allows us to open the topsite without a
+// network request.
+const TEST_TOP_SITE = "https://example.com/";
+
 async function setDefaultTopSites() {
   // The pref for TopSites is empty by default.
   await pushPrefs([
     "browser.newtabpage.activity-stream.default.sites",
-    "https://www.youtube.com/,https://www.facebook.com/,https://www.amazon.com/,https://www.reddit.com/,https://www.wikipedia.org/,https://twitter.com/",
+    DEFAULT_TOP_SITES.join(","),
   ]);
   await toggleTopsitesPref();
   await pushPrefs([
     "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts",
     true,
   ]);
+  return DEFAULT_TOP_SITES;
 }
+
+/**
+ * Unpins every top site. Pinning writes browser.newtabpage.pinned, a real pref
+ * that no pref environment pops, so a site a test pins stays pinned for the
+ * rest of the browser session.
+ */
+function clearPinnedTopSites() {
+  for (const link of [...NewTabUtils.pinnedLinks.links]) {
+    if (link) {
+      NewTabUtils.pinnedLinks.unpin(link);
+    }
+  }
+  // Lets setDefaultTopSites pin its search shortcut again.
+  Services.prefs.clearUserPref(
+    "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts.havePinned"
+  );
+}
+
+// Whatever a test pins is still pinned when the next test file starts, so every
+// file in this folder starts from an unpinned row.
+add_setup(clearPinnedTopSites);
 
 async function setTestTopSites() {
   await pushPrefs([
@@ -50,12 +86,12 @@ async function setTestTopSites() {
     false,
   ]);
   // The pref for TopSites is empty by default.
-  // Using a topsite with example.com allows us to open the topsite without a network request.
   await pushPrefs([
     "browser.newtabpage.activity-stream.default.sites",
-    "https://example.com/",
+    TEST_TOP_SITE,
   ]);
   await toggleTopsitesPref();
+  return TEST_TOP_SITE;
 }
 
 // `.top-sites-list` is the grid itself: the `.top-sites` section also holds
@@ -122,9 +158,17 @@ async function clearHistoryAndBookmarks() {
 async function waitForPreloaded(browser) {
   if (
     browser.webProgress.isLoadingDocument ||
-    browser.currentURI?.spec === "about:blank"
+    !browser.currentURI?.spec ||
+    browser.currentURI.spec === "about:blank"
   ) {
-    await BrowserTestUtils.browserLoaded(browser);
+    // Not browserLoaded: isLoadingDocument clears on the stop browserStopped
+    // waits for, while the load event rides an earlier one. An aborted stop
+    // clears the flag too, hence checkAborts.
+    await BrowserTestUtils.browserStopped(
+      browser,
+      null,
+      true /* checkAborts */
+    );
   }
 }
 
@@ -217,6 +261,46 @@ function addContentHelpers() {
       return [...panelList.children].filter(
         child => child.localName === "panel-item"
       );
+    },
+
+    /**
+     * Wait for the tile of a given top site. Which site the grid puts first
+     * depends on history and on what earlier tests left pinned, so a test that
+     * needs a specific site has to name it.
+     *
+     * @param url {String} The top site's URL, as configured.
+     * @return {Promise<Element>} The site's `.top-site-outer` tile.
+     */
+    async waitForTopSite(url) {
+      const selector = `.top-site-outer:has(a.top-site-button[href="${url}"])`;
+      await ContentTaskUtils.waitForCondition(
+        () => document.querySelector(selector),
+        `Wait for the ${url} top site tile`
+      );
+      return document.querySelector(selector);
+    },
+
+    /**
+     * Wait for a menu item of one tile's context menu. Every tile renders its
+     * `panel-list` and all of its items up front, and the lists differ in
+     * length by tile type, so neither a document-wide `panel-item` query nor a
+     * fixed index identifies an item.
+     *
+     * @param tile {Element} The tile whose menu to search.
+     * @param l10nId {String} The item's Fluent id, e.g. "newtab-menu-pin".
+     * @return {Promise<Element>} The `panel-item`.
+     */
+    async waitForPanelItem(tile, l10nId) {
+      const item = () =>
+        [...tile.querySelectorAll("panel-item")].find(
+          candidate =>
+            candidate.querySelector("[data-l10n-id]")?.dataset.l10nId === l10nId
+        );
+      await ContentTaskUtils.waitForCondition(
+        item,
+        `Wait for the ${l10nId} menu item`
+      );
+      return item();
     },
   });
 }
