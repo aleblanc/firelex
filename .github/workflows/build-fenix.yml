@@ -16,11 +16,7 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      # On build l'upstream STABLE (release), pas le contenu Firefox de la fork.
-      # Le code custom (uBO + extension + home) vit dans firelex-patch/ sur CE repo
-      # et est overlay par-dessus (etape "Apply firelex-patch"). Comme on ne merge
-      # jamais upstream dans la fork, il n'y a jamais de conflit de merge : seuls
-      # les .patch se re-basent si release touche les fichiers cibles (rare).
+
       - name: Checkout upstream STABLE (release)
         uses: actions/checkout@v4
         with:
@@ -58,8 +54,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Cache des toolchains/SDK/NDK telecharges par bootstrap (~5-8 Go).
-      # 1er run : vide, se remplit a la fin. Runs suivants : bootstrap ~instantane.
+
       - name: Cache ~/.mozbuild (toolchains, SDK, NDK)
         uses: actions/cache@v4
         with:
@@ -68,7 +63,6 @@ jobs:
           restore-keys: |
             mozbuild-android-artifact-${{ runner.os }}-
 
-      # Cache des dependances Gradle.
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -79,7 +73,8 @@ jobs:
           restore-keys: |
             gradle-fenix-${{ runner.os }}-
 
-      # ⚠️ "Artifact Mode" = telecharge Gecko precompile (PAS de compilation C++).
+
+      # ⚠️ "Artifact Mode" = télécharge Gecko précompilé (PAS de compilation C++).
       # Sans "Artifact Mode", il compile tout le moteur -> impossible sur runner gratuit.
       - name: mach bootstrap (ARTIFACT MODE)
         run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android Artifact Mode'

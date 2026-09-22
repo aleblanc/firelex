@@ -6876,26 +6876,33 @@ EditContext* Document::DetermineActiveEditContext() const {
 
 void Document::UpdateTextEditContext() {
   // https://w3c.github.io/edit-context/#dfn-update-the-text-edit-context
-  // 1. Let oldActiveEditContext be document's active EditContext.
-  RefPtr<EditContext> oldActiveEditContext = mActiveEditContext;
   // 2. Let newActiveEditContext be the result of running the steps to determine
   //    the active EditContext given document.
   RefPtr<EditContext> newActiveEditContext = DetermineActiveEditContext();
-  // https://github.com/w3c/edit-context/pull/123
-  if (oldActiveEditContext == newActiveEditContext) {
+  // 3. If oldActiveEditContext is not null and is not equal to
+  //    newActiveEditContext, then run the steps to deactivate an EditContext
+  //    given oldActiveEditContext.
+  if (mActiveEditContext == newActiveEditContext) {
     return;
   }
-  // 3. If oldActiveEditContext is not null, then run the steps to deactivate an
-  //    EditContext given oldActiveEditContext.
-  if (oldActiveEditContext) {
-    oldActiveEditContext->Deactivate();
-  }
+  // End the composition, even if the old editor is not an EditContext,
+  // so that the new EditContext doesn't get half of the old composition.
+  DeactivateEditContextAndEndComposition();
   // 5. Set the document's active EditContext to newActiveEditContext.
   mActiveEditContext = newActiveEditContext;
   // 4. If newActiveEditContext is not null, then:
   //   1. Update the Text Edit Context's text state to match the values in
   //      newActiveEditContext's text state.
   EditContext::NotifyActiveEditContextChanged(*this);
+}
+
+void Document::DeactivateEditContextAndEndComposition() {
+  if (RefPtr<HTMLEditor> editor = GetHTMLEditor()) {
+    editor->CommitComposition();
+  }
+  if (mActiveEditContext) {
+    mActiveEditContext->Deactivate();
+  }
 }
 
 void Document::MaybeDispatchCheckKeyPressEventModelEvent() {
@@ -20989,9 +20996,9 @@ nsIPrincipal* Document::EffectiveStoragePrincipal() const {
 
   // Calling StorageAllowedForDocument will notify the ContentBlockLog. This
   // loads TrackingDBService.sys.mjs, making us potentially
-  // fail // browser/base/content/test/performance/browser_startup.js. To avoid
-  // that, we short-circuit the check here by allowing storage access to system
-  // and addon principles, avoiding the test-failure.
+  // fail // browser/base/content/test/browser-performance/browser_startup.js.
+  // To avoid that, we short-circuit the check here by allowing storage access
+  // to system and addon principles, avoiding the test-failure.
   nsIPrincipal* principal = NodePrincipal();
   if (principal && (principal->IsSystemPrincipal() ||
                     principal->GetIsAddonOrExpandedAddonPrincipal())) {

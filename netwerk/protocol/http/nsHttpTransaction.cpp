@@ -306,6 +306,19 @@ nsresult nsHttpTransaction::Init(
     mHasRequestBody = false;
   }
 
+  // The originating channel keeps its own reference to this upload stream and
+  // may seek or clone it on the main thread (to rewind for a 307/308 redirect
+  // or an auth retry) while this transaction reads it on the socket thread.
+  // Input streams are not safe for concurrent access from multiple threads, so
+  // read from a private clone and leave the channel's stream untouched by the
+  // socket thread. Parent-process upload streams are normalized to be cloneable
+  // (see HttpBaseChannel's NormalizeUploadStream).
+  nsCOMPtr<nsIInputStream> requestBodyClone;
+  if (mHasRequestBody && NS_SUCCEEDED(NS_CloneInputStream(
+                             requestBody, getter_AddRefs(requestBodyClone)))) {
+    requestBody = requestBodyClone;
+  }
+
   requestContentLength += mReqHeaderBuf.Length();
 
   if (mHasRequestBody) {
@@ -1558,7 +1571,8 @@ void nsHttpTransaction::Close(nsresult reason) {
   // connection.  It will break that connection and also confuse the channel's
   // auth provider, beliving the cached credentials are wrong and asking for
   // the password mistakenly again from the user.
-  if ((reason == NS_ERROR_NET_RESET || reason == NS_OK ||
+  if ((reason == NS_ERROR_NET_RESET ||
+       reason == NS_ERROR_NET_UNCLEAN_SHUTDOWN || reason == NS_OK ||
        reason ==
            psm::GetXPCOMFromNSSError(SSL_ERROR_DOWNGRADE_WITH_EARLY_DATA) ||
        reason == NS_ERROR_HTTP2_FALLBACK_TO_HTTP1 ||

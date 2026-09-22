@@ -1036,12 +1036,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(CanvasRenderingContext2D)
       /*
        * XXXjwatt: I don't think this is doing anything useful.  All we do under
        * this function is clear a raw C-style (i.e. not strong) pointer.  That's
-       * clearly not helping in breaking any cycles.  The fact that we MOZ_CRASH
-       * in OnRenderingChange if that pointer is null indicates that this isn't
-       * even doing anything useful in terms of preventing further invalidation
-       * from any observed filters.
+       * clearly not helping in breaking any cycles.
        */
-      autoSVGFiltersObserver->Detach();
+      autoSVGFiltersObserver->SetIsActive(false);
     }
     ImplCycleCollectionUnlink(state.autoSVGFiltersObserver);
   }
@@ -1131,12 +1128,21 @@ CanvasRenderingContext2D::ContextState::ContextState(const ContextState& aOther)
       lineJoin(aOther.lineJoin),
       filterString(aOther.filterString),
       filterChain(aOther.filterChain),
-      autoSVGFiltersObserver(aOther.autoSVGFiltersObserver),
       filter(aOther.filter),
       filterAdditionalImages(aOther.filterAdditionalImages.Clone()),
       filterSourceGraphicTainted(aOther.filterSourceGraphicTainted),
       imageSmoothingEnabled(aOther.imageSmoothingEnabled),
-      explicitLang(aOther.explicitLang) {}
+      explicitLang(aOther.explicitLang) {
+  if (aOther.autoSVGFiltersObserver) {
+    autoSVGFiltersObserver = aOther.autoSVGFiltersObserver->Clone();
+  }
+}
+
+CanvasRenderingContext2D::ContextState::~ContextState() {
+  if (autoSVGFiltersObserver.get()) {
+    autoSVGFiltersObserver->SetIsActive(false);
+  }
+}
 
 void CanvasRenderingContext2D::ContextState::SetColorStyle(Style aWhichStyle,
                                                            nscolor aColor) {
@@ -1233,12 +1239,6 @@ CanvasRenderingContext2D::~CanvasRenderingContext2D() {
   RemovePostRefreshObserver();
   RemoveShutdownObserver();
   ResetBitmap();
-
-  for (ContextState& state : mStyleStack) {
-    if (auto* obs = state.autoSVGFiltersObserver.get()) {
-      obs->Detach();
-    }
-  }
 
   sNumLivingContexts.set(sNumLivingContexts.get() - 1);
   if (sNumLivingContexts.get() == 0 && sErrorTarget.get()) {
@@ -1877,6 +1877,7 @@ bool CanvasRenderingContext2D::EnsureTarget(ErrorResult& aError,
 void CanvasRenderingContext2D::SetInitialState() {
   // Set up the initial canvas defaults
   mPathBuilder = nullptr;
+  mRecycledPathBuilder = nullptr;
   mPath = nullptr;
   mPathPruned = false;
   mPathTransform = Matrix();
@@ -2389,9 +2390,13 @@ void CanvasRenderingContext2D::Save() {
     SetErrorState();
     return;
   }
-  mStyleStack[mStyleStack.Length() - 1].transform = GetCurrentTransform();
+  CurrentState().transform = GetCurrentTransform();
   mStyleStack.SetCapacity(mStyleStack.Length() + 1);
   mStyleStack.AppendElement(CurrentState());
+  if (auto* autoSVGFiltersObserver =
+          PreviousState().autoSVGFiltersObserver.get()) {
+    autoSVGFiltersObserver->SetIsActive(false);
+  }
 
   if (mStyleStack.Length() > MAX_STYLE_STACK_SIZE) {
     // This is not fast, but is better than OOMing and shouldn't be hit by
@@ -2417,6 +2422,10 @@ void CanvasRenderingContext2D::Restore() {
   }
 
   mStyleStack.RemoveLastElement();
+  if (auto* autoSVGFiltersObserver =
+          CurrentState().autoSVGFiltersObserver.get()) {
+    autoSVGFiltersObserver->SetIsActive(true);
+  }
 
   mPathTransformDirty = true;
 }
@@ -2985,7 +2994,7 @@ void CanvasRenderingContext2D::SetFilter(const nsACString& aFilter,
     CurrentState().filterChain = std::move(filterChain);
     if (mCanvasElement) {
       if (CurrentState().autoSVGFiltersObserver) {
-        CurrentState().autoSVGFiltersObserver->Detach();
+        CurrentState().autoSVGFiltersObserver->SetIsActive(false);
       }
       CurrentState().autoSVGFiltersObserver =
           SVGObserverUtils::ObserveFiltersForCanvasContext(
@@ -3542,8 +3551,16 @@ void CanvasRenderingContext2D::StrokeRect(double aX, double aY, double aW,
 //
 
 void CanvasRenderingContext2D::BeginPath() {
-  mPath = nullptr;
-  mPathBuilder = nullptr;
+  if (mPathBuilder) {
+    mRecycledPathBuilder = std::move(mPathBuilder);
+  } else {
+    mPathBuilder = nullptr;
+  }
+  if (mPath && mPath->hasOneRef() && mRecycledPathBuilder) {
+    mRecycledPathBuilder->RecyclePath(mPath.forget());
+  } else {
+    mPath = nullptr;
+  }
   mPathPruned = false;
 }
 
@@ -3638,34 +3655,6 @@ void CanvasRenderingContext2D::StrokeImpl(const gfx::Path& aPath) {
 
 void CanvasRenderingContext2D::Stroke() {
   mFeatureUsage |= CanvasFeatureUsage::Stroke;
-
-  if (mPathBuilder && !mPath && !mPathPruned && !mPathTransformDirty &&
-      IsTargetValid()) {
-    Maybe<Path::Circle> circle = mPathBuilder->AsCircle();
-    Maybe<Path::Line> line = circle ? Nothing() : mPathBuilder->AsLine();
-    if ((circle && circle->closed) || line) {
-      if (!NeedToCalculateBounds()) {
-        const ContextState& state = CurrentState();
-        StrokeOptions strokeOptions(
-            state.lineWidth, CanvasToGfx(state.lineJoin),
-            CanvasToGfx(state.lineCap), state.miterLimit, state.dash.Length(),
-            state.dash.Elements(), state.dashOffset);
-        if (circle) {
-          mTarget->StrokeCircle(
-              circle->origin, circle->radius,
-              CanvasGeneralPattern().ForStyle(this, Style::STROKE, mTarget),
-              strokeOptions, DrawOptions(state.globalAlpha, state.op));
-        } else {
-          mTarget->StrokeLine(
-              line->origin, line->destination,
-              CanvasGeneralPattern().ForStyle(this, Style::STROKE, mTarget),
-              strokeOptions, DrawOptions(state.globalAlpha, state.op));
-        }
-        Redraw();
-        return;
-      }
-    }
-  }
 
   EnsureTargetAndUserSpacePath();
   if (!IsTargetValid()) {
@@ -4156,7 +4145,8 @@ bool CanvasRenderingContext2D::EnsureWritablePath() {
       mPathBuilder = mTarget->CreatePathBuilder(fillRule);
     }
   } else {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), fillRule);
+    mPathBuilder = Path::ToBuilder(mPath.forget(), fillRule,
+                                   mRecycledPathBuilder.forget());
   }
   return true;
 }
@@ -4164,10 +4154,8 @@ bool CanvasRenderingContext2D::EnsureWritablePath() {
 already_AddRefed<PathBuilder>
 CanvasRenderingContext2D::CreateOrRecyclePathBuilder(FillRule aFillRule) {
   if (mRecycledPathBuilder) {
-    if (mRecycledPathBuilder->Reset(aFillRule)) {
-      return mRecycledPathBuilder.forget();
-    }
-    mRecycledPathBuilder = nullptr;
+    mRecycledPathBuilder->Reset(aFillRule);
+    return mRecycledPathBuilder.forget();
   }
   return Factory::CreatePathBuilder(mPathType, aFillRule);
 }
@@ -4202,12 +4190,18 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
   if (mPathBuilder) {
     EnsureCapped();
     RefPtr<PathBuilder> builder = mPathBuilder.forget();
+    if (builder->GetFillRule() != fillRule) {
+      builder->SetFillRule(fillRule);
+    }
     mPath = builder->Finish();
     mRecycledPathBuilder = std::move(builder);
   }
 
   if (mPath && mPath->GetFillRule() != fillRule) {
-    Path::SetFillRule(mPath, fillRule);
+    RefPtr<PathBuilder> builder = Path::ToBuilder(
+        mPath.forget(), fillRule, mRecycledPathBuilder.forget());
+    mPath = builder->Finish();
+    mRecycledPathBuilder = std::move(builder);
   }
 
   NS_ASSERTION(mPath, "mPath should exist");
@@ -4215,9 +4209,10 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
 
 void CanvasRenderingContext2D::TransformCurrentPath(const Matrix& aTransform) {
   if (mPathBuilder) {
-    mPathBuilder = Path::ToBuilder(mPathBuilder->Finish(), aTransform);
+    mPathBuilder->Transform(aTransform);
   } else if (mPath) {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), aTransform);
+    mPathBuilder = Path::ToBuilder(mPath.forget(), aTransform,
+                                   mRecycledPathBuilder.forget());
   }
 }
 
@@ -4612,11 +4607,11 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
   gfxFontFeature setting{TRUETYPE_TAG('k', 'e', 'r', 'n'), 0};
   switch (state.fontKerning) {
     case CanvasFontKerning::None:
-      setting.mValue = 0;
+      setting.value = 0;
       fontStyle.featureSettings.AppendElement(setting);
       break;
     case CanvasFontKerning::Normal:
-      setting.mValue = 1;
+      setting.value = 1;
       fontStyle.featureSettings.AppendElement(setting);
       break;
     default:
@@ -6847,12 +6842,6 @@ void CanvasRenderingContext2D::EnsureErrorTarget() {
   MOZ_ASSERT(errorTarget, "Failed to allocate the error target!");
 
   sErrorTarget.set(errorTarget.forget().take());
-}
-
-void CanvasRenderingContext2D::FillRuleChanged() {
-  if (mPath) {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), CurrentState().fillRule);
-  }
 }
 
 void CanvasRenderingContext2D::PutImageData(ImageData& aImageData, int32_t aDx,
