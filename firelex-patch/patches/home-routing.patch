@@ -1,25 +1,20 @@
-diff --git a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/AppRequestInterceptor.kt b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/AppRequestInterceptor.kt
-index b9a979d91a..88b1e24505 100644
---- a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/AppRequestInterceptor.kt
-+++ b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/AppRequestInterceptor.kt
-@@ -20,6 +20,7 @@ import mozilla.components.concept.engine.utils.ABOUT_HOME_URL
- import mozilla.components.feature.search.ext.buildSearchUrl
- import mozilla.components.support.ktx.kotlin.isContentUrl
- import org.mozilla.fenix.GleanMetrics.ErrorPage
-+import org.mozilla.fenix.components.SymfonyBuiltInExtensions
- import org.mozilla.fenix.ext.components
- import org.mozilla.fenix.ext.isOnline
+diff --git a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
+index 05a549aa5c7f..75e761703661 100644
+--- a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
++++ b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
+@@ -1116,6 +1116,15 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
+     override fun onResume() {
+         super.onResume()
  
-@@ -52,6 +53,12 @@ class AppRequestInterceptor(
-             return it
-         }
- 
-+        if (uri == ABOUT_HOME_URL) {
-+            SymfonyBuiltInExtensions.dashboardUrl?.let {
-+                return RequestInterceptor.InterceptionResponse.Url(it)
-+            }
++        org.mozilla.fenix.components.SymfonyBuiltInExtensions.dashboardUrl?.let { dashboard ->
++            (requireActivity() as HomeActivity).openToBrowserAndLoad(
++                searchTermOrURL = dashboard,
++                newTab = true,
++                from = BrowserDirection.FromHome,
++            )
++            return
 +        }
 +
-         if (interceptAboutHomeRequest(uri)) {
-             // Let the original request proceed.
-             return null
+         hideToolbar()
+ 
+         val components = requireComponents
