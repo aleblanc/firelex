@@ -26,7 +26,7 @@ object SymfonyBuiltInExtensions {
         runtime.installBuiltInWebExtension(
             UBLOCK_ID,
             UBLOCK_URL,
-            onSuccess = { logger.debug("Installed uBlock Origin: ${it.id}") },
+            onSuccess = { logger.debug("Installed uBlock Origin: ${it.id} settings: ${it.getMetadata()?.baseUrl}dashboard.html") },
             onError = { throwable -> logger.error("Failed to install uBlock Origin", throwable) },
         )
         runtime.installBuiltInWebExtension(
