@@ -1,8 +1,12 @@
 diff --git a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
-index 05a549aa5c7f..75e761703661 100644
+index 05a549aa5c7f..72680c06d720 100644
 --- a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
 +++ b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
-@@ -1116,6 +1116,15 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
+@@ -1113,9 +1113,19 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
+         }
+     }
+ 
++    @Suppress("DEPRECATION")
      override fun onResume() {
          super.onResume()
  
