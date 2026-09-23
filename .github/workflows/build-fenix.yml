@@ -22,7 +22,7 @@ jobs:
         with:
           repository: mozilla-firefox/firefox
           ref: release
-          fetch-depth: 1000
+          fetch-depth: 300
           filter: 'blob:none'
 
       # Recupere firelex-patch/ (overlay + patches + XPIs) depuis CE repo, dans un
